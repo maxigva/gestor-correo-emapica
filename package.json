@@ -1,0 +1,24 @@
+{
+  "name": "gestor-correo-emapica",
+  "version": "0.1.0",
+  "description": "Monitoreo de uso de cuentas de correo (DirectAdmin) con historial diario, dashboard y alertas.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "sync-now": "node scripts/sync-now.js",
+    "create-user": "node scripts/create-user.js",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "setup": "npm install && npm run build:frontend"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^3.0.3"
+  }
+}
