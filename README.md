@@ -1,134 +1,165 @@
-# Gestor de Cuentas de Correo — EMAPICA
+# Gestor de Cuentas de Correo
 
-Monitoreo de uso de disco de las cuentas de correo del dominio
-`emapica.com.pe` (vía la API de DirectAdmin), con historial diario,
-dashboard con alertas por umbral, y login básico.
+Sistema web para el monitoreo del almacenamiento de cuentas de correo
+electrónico alojadas en un servidor DirectAdmin. Consulta el estado de los
+buzones de forma automática, guarda un historial diario y muestra alertas
+cuando una cuenta se acerca a su límite de cuota.
 
-## Arquitectura
+## Problema que resuelve
 
-```
-gestor-correo/
-├─ server.js                     Backend: Express + cron + sirve el build de React
-├─ src/
-│  ├─ config/credentials.js      Credenciales/config centralizadas
-│  ├─ db/database.js             Esquema SQLite (cuentas, snapshots, usuarios, settings)
-│  ├─ middleware/auth.js         Exige sesión válida en las rutas protegidas
-│  ├─ services/
-│  │  ├─ directadmin.js          Habla con CMD_API_POP de DirectAdmin
-│  │  ├─ sync.js                 Orquesta: trae datos → guarda snapshot diario
-│  │  └─ auth.js                 Crear usuarios, verificar login, emitir/verificar JWT
-│  └─ routes/
-│     ├─ api.js                  Endpoints del dashboard (protegidos)
-│     └─ auth.js                 /login, /logout, /me
-├─ scripts/
-│  ├─ sync-now.js                Sincronizar desde la terminal
-│  └─ create-user.js             Crear un usuario del panel (no hay registro público)
-└─ frontend/                     App en React (Vite)
-   └─ src/
-      ├─ api/client.js           Único punto de fetch al backend
-      ├─ context/AuthContext.jsx Sabe quién está logueado, en toda la app
-      ├─ components/             Piezas reutilizables (Topbar, StatusBadge, UsageGauge, Toast…)
-      ├─ hooks/useSync.js         Lógica de "sincronizar ahora"
-      └─ pages/                   Login, Dashboard, Settings
-```
+El panel de DirectAdmin permite ver el estado de cada cuenta, pero con
+cientos de buzones no ofrece forma de ordenarlos por uso, filtrar los que
+están por llenarse ni conservar historial. El problema se detecta cuando el
+usuario reporta que su buzón ya no recibe correos, es decir, cuando el
+servicio ya se vio afectado.
 
-**Por qué esta separación:** cada capa solo conoce la de abajo. Agregar una
-vista nueva es una carpeta en `pages/`; agregar un endpoint es una función
-en `routes/`; cambiar cómo se guardan las credenciales es un solo archivo
-(`credentials.js`). No hace falta tocar lo que ya funciona para sumar algo.
+Este sistema invierte ese esquema: consulta el servidor todos los días,
+guarda el resultado y señala las cuentas en riesgo antes de que lleguen al
+límite.
 
-## 1. Instalación (primera vez)
+## Características
+
+- Sincronización automática programable (por defecto, una vez al día)
+- Panel con resumen general y detalle por cuenta
+- Umbrales de alerta configurables (por defecto, 70 % y 90 %)
+- Historial diario de cada buzón
+- Acceso protegido con usuario y contraseña
+- Configuración editable desde el panel, sin reiniciar el servidor
+
+## Requisitos
+
+- Node.js 18 o superior
+- Acceso a un servidor DirectAdmin con una Login Key que tenga habilitado
+  el comando `CMD_API_POP`
+
+## Instalación
 
 ```bash
 npm run setup
 ```
 
-Esto instala las dependencias del backend **y** del frontend, y compila el
-frontend a `frontend/dist/` (que es lo que Express sirve en producción).
+Este comando instala las dependencias del backend y del frontend, y compila
+la interfaz.
 
-## 2. Configuración
+## Configuración
+
+Copie el archivo de ejemplo:
 
 ```bash
 cp .env.example .env
 ```
 
-Completá:
-- `DA_HOST`, `DA_PORT`, `DA_DOMAIN`, `DA_USERNAME`, `DA_LOGIN_KEY` → ver
-  sección "Login key" más abajo
-- `JWT_SECRET` → generalo con:
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-  ```
-  Pegá el resultado en `.env`. Esto firma las sesiones de login — sin esto,
-  el servidor no arranca (falla rápido con un mensaje claro).
+Genere una clave para las sesiones:
 
-## 3. Crear tu usuario
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
 
-No hay pantalla de "registrarse" a propósito — solo quien tiene acceso a
-la terminal del servidor puede dar de alta gente:
+Pegue el resultado en la variable `JWT_SECRET` del archivo `.env`. Es el
+único valor obligatorio para que el servidor inicie.
+
+Las credenciales de DirectAdmin (`DA_HOST`, `DA_PORT`, `DA_DOMAIN`,
+`DA_USERNAME`, `DA_LOGIN_KEY`) pueden completarse en el `.env` o cargarse
+después desde la sección Configuración del panel. Lo que se guarde desde el
+panel tiene prioridad sobre el archivo.
+
+## Uso
+
+Cree un usuario para acceder al panel:
 
 ```bash
 npm run create-user
 ```
 
-Te va a pedir usuario y contraseña (mínimo 8 caracteres).
-
-## 4. Correr la app
+Inicie el servidor:
 
 ```bash
 npm start
 ```
 
-Abrí `http://localhost:3000` (o el puerto de tu `.env`) y logueate con el
-usuario que creaste.
+El panel queda disponible en `http://localhost:3000`.
 
-## 5. Desarrollo (si vas a tocar el frontend)
+## Comandos disponibles
 
-Corré backend y frontend por separado, en dos terminales:
+| Comando | Descripción |
+|---|---|
+| `npm start` | Inicia el servidor y el panel web |
+| `npm run setup` | Instala dependencias y compila el frontend |
+| `npm run create-user` | Crea un usuario de acceso al panel |
+| `npm run sync-now` | Ejecuta una sincronización desde la terminal |
+| `npm run dev` | Inicia el servidor con recarga automática |
+| `npm run build:frontend` | Recompila la interfaz |
+
+## Estructura del proyecto
+
+```
+gestor-correo/
+├─ server.js                     Punto de entrada: Express, tareas programadas
+├─ src/
+│  ├─ config/credentials.js      Configuración y credenciales centralizadas
+│  ├─ db/database.js             Esquema y conexión a SQLite
+│  ├─ middleware/auth.js         Validación de sesión en rutas protegidas
+│  ├─ services/
+│  │  ├─ directadmin.js          Comunicación con la API de DirectAdmin
+│  │  ├─ sync.js                 Obtención y registro de datos
+│  │  └─ auth.js                 Usuarios, contraseñas y tokens
+│  └─ routes/
+│     ├─ api.js                  Endpoints del panel
+│     └─ auth.js                 Inicio y cierre de sesión
+├─ scripts/
+│  ├─ sync-now.js                Sincronización manual
+│  └─ create-user.js             Alta de usuarios
+└─ frontend/                     Interfaz en React (Vite)
+   └─ src/
+      ├─ api/client.js           Cliente HTTP
+      ├─ context/                Estado de sesión
+      ├─ components/             Componentes reutilizables
+      ├─ hooks/                  Lógica compartida
+      └─ pages/                  Login, Dashboard, Configuración
+```
+
+Cada capa se comunica únicamente con la inmediata inferior. Agregar una
+vista implica un archivo en `pages/`; agregar un endpoint, una función en
+`routes/`. Los detalles de la API de DirectAdmin están contenidos en un solo
+archivo, de modo que un cambio en el servidor no afecta al resto del sistema.
+
+## Desarrollo
+
+Para trabajar sobre la interfaz con recarga automática, ejecute el backend y
+el frontend por separado:
 
 ```bash
-# Terminal 1 — backend
+# Terminal 1
 npm start
 
-# Terminal 2 — frontend con recarga en caliente
+# Terminal 2
 cd frontend
 npm run dev
 ```
 
-Abrí `http://localhost:5173` (Vite). Las llamadas a `/api` se redirigen
-automáticamente al backend en el puerto 3000 (ver `frontend/vite.config.js`).
-Cuando termines de tocar el frontend, `npm run build:frontend` desde la raíz
-recompila `frontend/dist/` para que `npm start` lo sirva.
+La interfaz de desarrollo queda en `http://localhost:5173` y redirige las
+llamadas de la API al backend. Al terminar, `npm run build:frontend`
+recompila la versión que sirve `npm start`.
 
-## 6. Login key de DirectAdmin
+## Notas técnicas
 
-Login Keys → Create Login Key, con **`CMD_API_POP`** habilitado (mínimo
-necesario para leer cuentas/uso/cuota). Si más adelante suman la función de
-modificar cuotas desde la app, agregar también `CMD_API_EMAIL_POP`.
-Restringí la IP a la del servidor donde corra este backend.
+**Base de datos.** Se utiliza SQLite, que almacena toda la información en un
+único archivo (`data/gestor-correo.db`). No requiere instalar ni configurar
+un servidor de base de datos.
 
-Podés actualizar la llave desde la propia app (Configuración), sin
-reiniciar el servidor ni tocar el `.env`.
+**API de DirectAdmin.** La gestión de cuentas de correo se realiza mediante
+el comando `CMD_API_POP`, que devuelve el estado de todos los buzones del
+dominio en una sola consulta. Las versiones recientes de DirectAdmin
+incorporan una API REST, pero esta funcionalidad aún no está disponible allí.
 
-## 7. Ideas para expandir
+**Seguridad.** Las contraseñas se almacenan cifradas con bcrypt. Las sesiones
+se manejan con tokens JWT en cookies no accesibles desde JavaScript. La Login
+Key de DirectAdmin debe restringirse al comando mínimo necesario y, de ser
+posible, a la dirección IP del servidor donde se ejecuta el sistema.
 
-- **Modificar cuotas desde la app**: método en `directadmin.js` con
-  `CMD_API_EMAIL_POP&action=modify`, botón en el dashboard con confirmación.
-- **Gráfico de evolución por cuenta**: `GET /api/accounts/:usuario/history`
-  ya devuelve hasta 90 días — falta una página `pages/AccountHistory.jsx`
-  con un gráfico (Chart.js o Recharts).
-- **Notificaciones**: cuando el cron detecte una cuenta que cruzó el
-  umbral crítico, disparar un correo/webhook desde `sync.js`.
-- **Múltiples usuarios sin fricción**: correr `npm run create-user` de
-  nuevo por cada persona — la tabla `usuarios` ya soporta varios, sin roles.
+## Pendientes
 
-## 8. Seguridad — antes de producción
-
-- [ ] Restringir la login key de DirectAdmin a la IP real del servidor.
-- [ ] Generar un `JWT_SECRET` propio para producción (no reusar el de dev).
-- [ ] Cifrar `DA_LOGIN_KEY` en la tabla `settings` (hoy se guarda en texto
-      plano ahí, igual que en `.env`).
-- [ ] Servir todo detrás de HTTPS (las cookies de sesión son `secure` en
-      producción — `NODE_ENV=production` — así que sin HTTPS el login no
-      va a persistir).
-- [ ] Definir una política de contraseñas / rotación si el equipo crece.
+- Modificación de cuotas desde el panel
+- Gráficos de evolución por cuenta
+- Notificaciones automáticas al superar umbrales
+- Cifrado de la Login Key almacenada en base de datos
