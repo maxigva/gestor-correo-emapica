@@ -81,8 +81,40 @@ async function fetchEmailAccounts() {
   return parseFullList(rawText);
 }
 
+async function modifyQuota(usuario, nuevaCuotaMB) {
+  const cuota = Number(nuevaCuotaMB);
+  if (!Number.isInteger(cuota) || cuota <= 0) {
+    throw new DirectAdminError('La nueva cuota debe ser un número entero positivo de MB.');
+  }
+
+  const { domain } = credentials.getDirectAdminConfig();
+  if (!domain) throw new DirectAdminError('Falta configurar DA_DOMAIN.');
+
+  const params = new URLSearchParams({
+    domain,
+    action: 'modify',
+    user: usuario,
+    quota: String(cuota),
+  });
+  const url = `${baseUrl()}/CMD_API_POP?${params.toString()}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader() },
+  });
+
+  const rawText = await res.text();
+
+  if (!res.ok) {
+    throw new DirectAdminError(`DirectAdmin respondió HTTP ${res.status}`, rawText);
+  }
+  throwIfError(rawText);
+
+  return { usuario, mbCuota: cuota };
+}
+
 module.exports = {
   fetchEmailAccounts,
+  modifyQuota,
   parseFullList,
   DirectAdminError,
 };
