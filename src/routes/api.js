@@ -2,8 +2,14 @@ const express = require('express');
 const db = require('../db/database');
 const credentials = require('../config/credentials');
 const { runSync } = require('../services/sync');
+const directadmin = require('../services/directadmin');
 
 const router = express.Router();
+
+function calcularPorcentaje(mbUsado, mbCuota) {
+  if (mbCuota === null || mbCuota === undefined || mbCuota <= 0) return null;
+  return Math.round((mbUsado / mbCuota) * 1000) / 10;
+}
 
 router.get('/dashboard', (req, res) => {
   const { warning, critical } = credentials.getThresholds();
@@ -64,6 +70,58 @@ router.get('/accounts/:usuario/history', (req, res) => {
   `).all(cuenta.id);
 
   res.json({ cuenta, historial });
+});
+
+router.put('/accounts/:usuario/quota', async (req, res) => {
+  const { usuario } = req.params;
+  const nuevaCuotaMB = Number(req.body?.nuevaCuotaMB);
+
+  if (!Number.isInteger(nuevaCuotaMB) || nuevaCuotaMB <= 0) {
+    return res.status(400).json({ error: 'nuevaCuotaMB debe ser un número entero positivo' });
+  }
+
+  const cuenta = db.prepare('SELECT id, usuario, email FROM cuentas WHERE usuario = ?').get(usuario);
+  if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
+
+  try {
+    await directadmin.modifyQuota(usuario, nuevaCuotaMB);
+  } catch (err) {
+    if (err instanceof directadmin.DirectAdminError) {
+      return res.status(502).json({ error: err.message, details: err.details ?? null });
+    }
+    return res.status(500).json({ error: err.message });
+  }
+
+  const snapshot = db.prepare(`
+    SELECT id, mb_usado AS mbUsado
+    FROM snapshots
+    WHERE cuenta_id = ?
+    ORDER BY fecha DESC, id DESC
+    LIMIT 1
+  `).get(cuenta.id);
+
+  if (snapshot) {
+    db.prepare('UPDATE snapshots SET mb_cuota = ?, porcentaje = ? WHERE id = ?')
+      .run(nuevaCuotaMB, calcularPorcentaje(snapshot.mbUsado, nuevaCuotaMB), snapshot.id);
+  }
+
+  const actualizada = db.prepare(`
+    SELECT
+      c.usuario,
+      c.email,
+      s.mb_usado        AS mbUsado,
+      s.mb_cuota        AS mbCuota,
+      s.mensajes_usado  AS mensajesUsado,
+      s.mensajes_limite AS mensajesLimite,
+      s.suspendida      AS suspendida,
+      s.porcentaje      AS porcentaje,
+      s.fecha           AS ultimaActualizacion
+    FROM cuentas c
+    LEFT JOIN snapshots s ON s.id = ?
+    WHERE c.id = ?
+  `).get(snapshot?.id ?? null, cuenta.id);
+
+  res.json({ ...actualizada, suspendida: !!actualizada.suspendida });
 });
 
 router.post('/sync', async (req, res) => {
