@@ -22,6 +22,7 @@ límite.
 - Sincronización automática programable (por defecto, una vez al día)
 - Panel con resumen general y detalle por cuenta
 - Umbrales de alerta configurables (por defecto, 70 % y 90 %)
+- Modificación de la cuota de cada cuenta directamente desde el panel
 - Historial diario de cada buzón
 - Acceso protegido con usuario y contraseña
 - Configuración editable desde el panel, sin reiniciar el servidor
@@ -159,7 +160,6 @@ posible, a la dirección IP del servidor donde se ejecuta el sistema.
 
 ## Pendientes
 
-- Modificación de cuotas desde el panel
 - Gráficos de evolución por cuenta
 - Notificaciones automáticas al superar umbrales
 - Cifrado de la Login Key almacenada en base de datos
