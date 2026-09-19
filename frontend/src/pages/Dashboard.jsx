@@ -4,6 +4,7 @@ import { useToast } from '../components/Toast';
 import { Topbar } from '../components/Topbar';
 import { StatusBadge, SuspendedBadge } from '../components/StatusBadge';
 import { UsageGauge } from '../components/UsageGauge';
+import { QuotaModal } from '../components/QuotaModal';
 import { useSync } from '../hooks/useSync';
 
 const FILTROS = [
@@ -24,6 +25,7 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [orden, setOrden] = useState({ campo: 'porcentaje', dir: 'desc' });
   const [ultimaSync, setUltimaSync] = useState(null);
+  const [cuentaEditando, setCuentaEditando] = useState(null);
   const mostrarToast = useToast();
 
   const cargar = async () => {
@@ -131,14 +133,15 @@ export function Dashboard() {
                 <th onClick={() => cambiarOrden('porcentaje')}>%</th>
                 <th onClick={() => cambiarOrden('mensajesUsado')}>Mensajes</th>
                 <th>Estado</th>
+                <th className="col-actions"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
               {!data && (
-                <tr><td colSpan={6} className="empty-state">Cargando datos…</td></tr>
+                <tr><td colSpan={7} className="empty-state">Cargando datos…</td></tr>
               )}
               {data && cuentasFiltradas.length === 0 && (
-                <tr><td colSpan={6} className="empty-state">No hay cuentas que coincidan con el filtro.</td></tr>
+                <tr><td colSpan={7} className="empty-state">No hay cuentas que coincidan con el filtro.</td></tr>
               )}
               {cuentasFiltradas.map((c) => (
                 <tr key={c.usuario}>
@@ -158,12 +161,32 @@ export function Dashboard() {
                     <StatusBadge estado={c.estado} />
                     {c.suspendida && <SuspendedBadge />}
                   </td>
+                  <td className="col-actions">
+                    <button
+                      type="button"
+                      className="btn-row"
+                      onClick={() => setCuentaEditando(c)}
+                      title={`Modificar cuota de ${c.usuario}`}
+                      aria-label={`Modificar cuota de ${c.usuario}`}
+                    >
+                      ✎ Cuota
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </section>
       </main>
+
+      <QuotaModal
+        cuenta={cuentaEditando}
+        onClose={() => setCuentaEditando(null)}
+        onSuccess={() => {
+          setCuentaEditando(null);
+          cargar();
+        }}
+      />
     </>
   );
 }
