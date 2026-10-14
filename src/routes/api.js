@@ -11,10 +11,8 @@ function calcularPorcentaje(mbUsado, mbCuota) {
   return Math.round((mbUsado / mbCuota) * 1000) / 10;
 }
 
-router.get('/dashboard', (req, res) => {
-  const { warning, critical } = credentials.getThresholds();
-
-  const rows = db.prepare(`
+function obtenerCuentasActuales() {
+  return db.prepare(`
     SELECT
       c.usuario,
       c.email,
@@ -33,6 +31,17 @@ router.get('/dashboard', (req, res) => {
       )
     ORDER BY (s.porcentaje IS NULL), s.porcentaje DESC
   `).all();
+}
+
+function fechaLocal(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+router.get('/dashboard', (req, res) => {
+  const { warning, critical } = credentials.getThresholds();
+
+  const rows = obtenerCuentasActuales();
 
   const withEstado = rows.map((r) => ({
     ...r,
@@ -53,6 +62,23 @@ router.get('/dashboard', (req, res) => {
     enAlerta: withEstado.filter((r) => r.estado === 'alerta').length,
     cuentas: withEstado,
   });
+});
+
+router.get('/accounts/export', (req, res) => {
+  const encabezado = ['usuario', 'dominio', 'cuota_mb', 'uso_mb', 'porcentaje'];
+  const filas = obtenerCuentasActuales().map((c) => [
+    c.usuario,
+    (c.email || '').split('@')[1] || '',
+    c.mbCuota ?? '',
+    c.mbUsado ?? '',
+    c.porcentaje ?? '',
+  ].join(','));
+
+  const csv = [encabezado.join(','), ...filas].join('\r\n') + '\r\n';
+
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="cuentas-emapica-${fechaLocal()}.csv"`);
+  res.send(csv);
 });
 
 router.get('/accounts/:usuario/history', (req, res) => {
