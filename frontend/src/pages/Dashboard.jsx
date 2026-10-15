@@ -26,6 +26,7 @@ export function Dashboard() {
   const [orden, setOrden] = useState({ campo: 'porcentaje', dir: 'desc' });
   const [ultimaSync, setUltimaSync] = useState(null);
   const [cuentaEditando, setCuentaEditando] = useState(null);
+  const [exportando, setExportando] = useState(false);
   const mostrarToast = useToast();
 
   const cargar = async () => {
@@ -43,6 +44,32 @@ export function Dashboard() {
     setUltimaSync(new Date());
     cargar();
   });
+
+  const exportarCsv = async () => {
+    setExportando(true);
+    try {
+      const res = await fetch('/api/accounts/export', { credentials: 'include' });
+      if (!res.ok) {
+        let data = null;
+        try { data = await res.json(); } catch { }
+        throw new Error(data?.error || `Error ${res.status}`);
+      }
+      const nombre = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'cuentas-emapica.csv';
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = nombre;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      mostrarToast(err.message, 'error');
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const cuentasFiltradas = useMemo(() => {
     if (!data) return [];
@@ -81,6 +108,9 @@ export function Dashboard() {
         <span className="last-sync">
           {ultimaSync ? `Última sync: ${ultimaSync.toLocaleString('es-PE')}` : 'Sin sincronizar en esta sesión'}
         </span>
+        <button className="btn btn-ghost" onClick={exportarCsv} disabled={exportando}>
+          Exportar CSV
+        </button>
         <button className={`btn btn-primary ${sincronizando ? 'is-loading' : ''}`} onClick={sincronizar} disabled={sincronizando}>
           <span className="btn-icon">⟳</span> Sincronizar ahora
         </button>
