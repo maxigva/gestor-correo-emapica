@@ -167,6 +167,24 @@ router.get('/sync/log', (req, res) => {
   res.json(registros);
 });
 
+router.get('/sync/status', (req, res) => {
+  const ultimo = db.prepare(`
+    SELECT fecha, origen, cuentas_total AS cuentasTotal
+    FROM sync_log
+    WHERE exito = 1
+    ORDER BY fecha DESC, id DESC
+    LIMIT 1
+  `).get();
+
+  if (!ultimo) return res.json({ ultimaSincronizacion: null });
+
+  res.json({
+    ultimaSincronizacion: `${ultimo.fecha.replace(' ', 'T')}Z`,
+    cuentasTotal: ultimo.cuentasTotal,
+    origen: ultimo.origen,
+  });
+});
+
 router.get('/settings', (req, res) => {
   res.json(credentials.getAll({ redactSecrets: true }));
 });
