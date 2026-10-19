@@ -19,12 +19,23 @@ function formatMb(mb) {
   return mb >= 1000 ? `${(mb / 1000).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
+function tiempoRelativo(fecha) {
+  const minutos = Math.max(0, Math.floor((Date.now() - fecha.getTime()) / 60000));
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} ${horas === 1 ? 'hora' : 'horas'}`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} ${dias === 1 ? 'día' : 'días'}`;
+}
+
 export function Dashboard() {
   const [data, setData] = useState(null);
   const [filtro, setFiltro] = useState('todas');
   const [busqueda, setBusqueda] = useState('');
   const [orden, setOrden] = useState({ campo: 'porcentaje', dir: 'desc' });
-  const [ultimaSync, setUltimaSync] = useState(null);
+  const [ultimaSync, setUltimaSync] = useState(undefined);
+  const [, setAhora] = useState(Date.now());
   const [cuentaEditando, setCuentaEditando] = useState(null);
   const [exportando, setExportando] = useState(false);
   const mostrarToast = useToast();
@@ -38,11 +49,25 @@ export function Dashboard() {
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  const cargarEstadoSync = async () => {
+    try {
+      const { ultimaSincronizacion } = await api.get('/sync/status');
+      setUltimaSync(ultimaSincronizacion ? new Date(ultimaSincronizacion) : null);
+    } catch (err) {
+      mostrarToast(err.message, 'error');
+    }
+  };
 
-  const { sincronizar, sincronizando } = useSync((res) => {
-    setUltimaSync(new Date());
+  useEffect(() => {
     cargar();
+    cargarEstadoSync();
+    const intervalo = setInterval(() => setAhora(Date.now()), 60000);
+    return () => clearInterval(intervalo);
+  }, []);
+
+  const { sincronizar, sincronizando } = useSync(() => {
+    cargar();
+    cargarEstadoSync();
   });
 
   const exportarCsv = async () => {
@@ -105,8 +130,12 @@ export function Dashboard() {
   return (
     <>
       <Topbar>
-        <span className="last-sync">
-          {ultimaSync ? `Última sync: ${ultimaSync.toLocaleString('es-PE')}` : 'Sin sincronizar en esta sesión'}
+        <span className="last-sync" title={ultimaSync ? ultimaSync.toLocaleString('es-PE') : undefined}>
+          {ultimaSync === undefined
+            ? ''
+            : ultimaSync
+              ? `Actualizado ${tiempoRelativo(ultimaSync)}`
+              : 'Sin sincronizar aún'}
         </span>
         <button className="btn btn-ghost" onClick={exportarCsv} disabled={exportando}>
           Exportar CSV
